@@ -1,57 +1,71 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { createChart, IChartApi, ISeriesApi, Time, CandlestickSeries } from 'lightweight-charts';
-
-interface PriceData {
-  time: Time;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-}
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { createChart, IChartApi, ISeriesApi, CandlestickSeries, CandlestickData } from 'lightweight-charts';
+import { fetchHistoricalData, PriceData } from '@/services/stockApi';
+import { useWebSocket, WebSocketMessage } from '@/services/websocket';
 
 interface TradingChartProps {
   symbol: string;
   data?: PriceData[];
 }
 
+type Timeframe = '1' | '5' | '15' | '30' | '60' | 'D' | 'W' | 'M';
+
+const TIMEFRAMES: { value: Timeframe; label: string }[] = [
+  { value: '1', label: '1m' },
+  { value: '5', label: '5m' },
+  { value: '15', label: '15m' },
+  { value: '30', label: '30m' },
+  { value: '60', label: '1h' },
+  { value: 'D', label: '1D' },
+  { value: 'W', label: '1W' },
+  { value: 'M', label: '1M' },
+];
+
 export default function TradingChart({ symbol, data = [] }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const [chartData, setChartData] = useState<PriceData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>('D');
 
-  // Generate mock data if no data provided
-  const generateMockData = (): PriceData[] => {
-    const mockData: PriceData[] = [];
-    const basePrice = 2500;
-    let currentPrice = basePrice;
-    
-    for (let i = 30; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const timestamp = (date.getTime() / 1000) as Time;
-      
-      const volatility = 0.02;
-      const change = (Math.random() - 0.5) * volatility * currentPrice;
-      const open = currentPrice;
-      const close = currentPrice + change;
-      const high = Math.max(open, close) + Math.random() * 10;
-      const low = Math.min(open, close) - Math.random() * 10;
-      
-      mockData.push({
-        time: timestamp,
-        open,
-        high,
-        low,
-        close
-      });
-      
-      currentPrice = close;
+  // Fetch historical data
+  const fetchChartData = useCallback(async (timeframe?: Timeframe) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const tf = timeframe || selectedTimeframe;
+      const historicalData = await fetchHistoricalData(symbol, tf);
+      setChartData(historicalData);
+    } catch (err) {
+      setError('Failed to fetch chart data');
+      console.error('Error fetching chart data:', err);
+    } finally {
+      setIsLoading(false);
     }
-    
-    return mockData;
+  }, [symbol, selectedTimeframe]);
+
+  // Fetch data when symbol or timeframe changes
+  useEffect(() => {
+    if (symbol) {
+      fetchChartData();
+    }
+  }, [symbol, selectedTimeframe, fetchChartData]);
+
+  const handleTimeframeChange = (timeframe: Timeframe) => {
+    setSelectedTimeframe(timeframe);
   };
+  useWebSocket(symbol, (message: WebSocketMessage) => {
+    if (message.type === 'trade' && seriesRef.current) {
+      const trade = message.data as { s: string; p: number; t: number; v: number };
+      // Update the last candlestick with real-time data
+      // This would need more sophisticated logic for proper real-time updates
+      console.log('Real-time trade data:', trade);
+    }
+  });
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -94,8 +108,16 @@ export default function TradingChart({ symbol, data = [] }: TradingChartProps) {
     seriesRef.current = candlestickSeries;
 
     // Set data
-    const chartData = data.length > 0 ? data : generateMockData();
-    candlestickSeries.setData(chartData);
+    const dataToUse = data.length > 0 ? data : chartData;
+    if (dataToUse.length > 0) {
+      candlestickSeries.setData(dataToUse.map(item => ({
+        time: item.time,
+        open: item.open,
+        high: item.high,
+        low: item.low,
+        close: item.close
+      })) as CandlestickData[]);
+    }
 
     // Fit content
     chart.timeScale().fitContent();
@@ -104,32 +126,56 @@ export default function TradingChart({ symbol, data = [] }: TradingChartProps) {
     return () => {
       chart.remove();
     };
-  }, [symbol, data]);
+  }, [symbol, data, chartData]);
 
   // Update data when symbol changes
   useEffect(() => {
-    if (seriesRef.current && data.length === 0) {
-      const newData = generateMockData();
-      seriesRef.current.setData(newData);
+    if (seriesRef.current && chartData.length > 0) {
+      seriesRef.current.setData(chartData.map(item => ({
+        time: item.time,
+        open: item.open,
+        high: item.high,
+        low: item.low,
+        close: item.close
+      })) as CandlestickData[]);
     }
-  }, [symbol, data]);
+  }, [chartData]);
 
   return (
     <div className="relative bg-slate-900 rounded-lg border border-slate-800 overflow-hidden">
       <div className="p-4 border-b border-slate-800">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-white">{symbol}</h3>
-          <div className="flex items-center space-x-4 text-sm">
-            <span className="text-slate-400">1D</span>
-            <span className="text-green-500">1W</span>
-            <span className="text-slate-400">1M</span>
-            <span className="text-slate-400">3M</span>
-            <span className="text-slate-400">1Y</span>
-            <span className="text-slate-400">ALL</span>
+          <div className="flex items-center space-x-2">
+            {TIMEFRAMES.map((timeframe) => (
+              <button
+                key={timeframe.value}
+                onClick={() => handleTimeframeChange(timeframe.value)}
+                className={`px-3 py-1 text-sm rounded transition-colors ${
+                  selectedTimeframe === timeframe.value
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                }`}
+              >
+                {timeframe.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
-      <div ref={chartContainerRef} className="h-[400px]" />
+      <div className="relative h-[400px]">
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/50">
+            <div className="text-white">Loading chart data...</div>
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/50">
+            <div className="text-red-500">{error}</div>
+          </div>
+        )}
+        <div ref={chartContainerRef} className="h-full" />
+      </div>
     </div>
   );
 }
