@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { createChart, IChartApi, ISeriesApi, Time, SeriesType } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, Time, CandlestickSeries } from 'lightweight-charts';
 
 interface PriceData {
   time: Time;
@@ -81,14 +81,14 @@ export default function TradingChart({ symbol, data = [] }: TradingChartProps) {
     });
 
     // Add candlestick series
-    const candlestickSeries = chart.addSeries('Candlestick', {
+    const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#10b981',
       downColor: '#ef4444',
       borderDownColor: '#ef4444',
       borderUpColor: '#10b981',
       wickDownColor: '#ef4444',
       wickUpColor: '#10b981',
-    }) as ISeriesApi<'Candlestick'>;
+    });
 
     chartRef.current = chart;
     seriesRef.current = candlestickSeries;
