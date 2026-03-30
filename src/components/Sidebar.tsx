@@ -2,17 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  LayoutDashboard, 
-  Bot, 
-  History, 
-  Settings,
-  TrendingUp,
-  BarChart3
-} from 'lucide-react';
+import { LayoutDashboard, Bot, History, Settings, TrendingUp, ChartBar as BarChart3, Zap } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Automated Trading', href: '/automated-trading', icon: Zap },
   { name: 'AI Bot', href: '/bot', icon: Bot },
   { name: 'Trade History', href: '/history', icon: History },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
